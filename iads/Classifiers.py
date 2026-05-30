@@ -15,12 +15,6 @@ class Classifier(ABC):
         
     def get_dimension(self):
         return self.__dimension
-    
-    def get_w(self):
-        return self.__w
-
-    def set_w(self, new_w):
-        self.__w = new_w
         
     def __str__(self) -> str:
         return f'Classifier #{self.__ident} (d{self.__dimension})'
@@ -49,13 +43,13 @@ class Classifier(ABC):
 class ClassifierPerceptron(Classifier):
     def __init__(self, input_dimension, learning_rate=0.01, init=True, verbose=False):
         super().__init__(input_dimension)
-        self.__learning = learning_rate
+        self._learning = learning_rate
         if init:
-            self.__w = np.zeros(input_dimension)
+            self._w = np.zeros(input_dimension)
         else:
-            self.__w = (2 * np.random.rand(input_dimension) - 1) * 0.001
+            self._w = (2 * np.random.rand(input_dimension) - 1) * 0.001
         if verbose:
-            print(f"{super().__str__()}: initialisation (learning rate= {self.__learning}) w= {self.__w}")
+            print(f"{super().__str__()}: initialisation (learning rate= {self._learning})")
         
     def train_step(self, desc_set, label_set):
         rng = np.random.default_rng()
@@ -64,9 +58,9 @@ class ClassifierPerceptron(Classifier):
         for i in idx:
             x_i = desc_set[i]
             y_i = label_set[i]
-            y = self.score(x_i)
+            y = np.dot(self._w, x_i)
             if (y_i * y) <= 0: 
-               self.__w = self.__w + self.__learning * y_i * x_i  
+               self._w = self._w + self._learning * y_i * x_i  
      
     def __str__(self) -> str:
         return f'ClassifierPerceptron (d{self.get_dimension()})'
@@ -74,9 +68,9 @@ class ClassifierPerceptron(Classifier):
     def train(self, desc_set, label_set, nb_max=100, seuil=0.001, verbose=False):
         result_list = list()       
         for i in range(nb_max):
-            w_old = self.__w.copy()
+            w_old = self._w.copy()
             self.train_step(desc_set, label_set)
-            w_new = self.__w
+            w_new = self._w
             dif = np.linalg.norm(np.abs(w_new - w_old))
             result_list.append(dif)
             if dif < seuil:
@@ -84,15 +78,16 @@ class ClassifierPerceptron(Classifier):
         return result_list    
             
     def score(self, x):
-        return np.dot(self.__w, x)
+        return np.dot(self._w, x)
     
     def predict(self, x):
         return 1 if (self.score(x)) >= 0 else -1
+        
     def get_w(self):
-        return self._ClassifierPerceptron__w
+        return self._w.copy()
 
     def set_w(self, new_w):
-        self._ClassifierPerceptron__w = new_w
+        self._w = new_w.copy()
 
 
 class ClassifierKNN(Classifier):
@@ -117,9 +112,66 @@ class ClassifierKNN(Classifier):
         return 2 * (p - 0.5)
 
     def predict(self, x) -> int:
-        if (self.score(x) > 0):
-            return 1
-        return -1
+        return 1 if (self.score(x) > 0) else -1
+
+
+class ClassifierPerceptronBias(ClassifierPerceptron):
+    def __init__(self, input_dimension, learning_rate=0.01, init=True, verbose=False):
+        super().__init__(input_dimension + 1, learning_rate, init, verbose)
+        self.__input_dim_origin = input_dimension
+
+    def augmente(self, x):
+        """ Ajoute la constante -1 à la fin du vecteur ou de la matrice x """
+        if x.ndim == 1:
+            return np.append(x, -1)
+        return np.insert(x, x.shape[-1], -1, axis=-1)
+
+    def train_step(self, desc_set, label_set):
+        desc_set_aug = self.augmente(desc_set)
+        super().train_step(desc_set_aug, label_set)
+
+    def score(self, x):
+        x_aug = self.augmente(x)
+        return super().score(x_aug)
+
+    def __str__(self) -> str:
+        return f'ClassifierPerceptronBias (d_origine={self.__input_dim_origin}, d_interne={self.get_dimension()})'
+
+
+class ClassifierPerceptronStable(ClassifierPerceptron):
+    def __str__(self) -> str:
+        return f"{super().__str__()} (stabilise)"
+    
+    def train(self, desc_set, label_set, nb_max=100, seuil=0.001, stabilised=True, verbose=False):
+        result_list = list()
+        
+        if not stabilised:
+            return super().train(desc_set, label_set, nb_max, seuil, verbose)
+            
+        best_w = self.get_w().copy()
+        best_accuracy = self.accuracy(desc_set, label_set)
+        
+        for i in range(nb_max):
+            w_old = self.get_w().copy()
+            self.train_step(desc_set, label_set)
+            w_new = self.get_w().copy()
+            
+            dif = np.linalg.norm(np.abs(w_new - w_old))
+            result_list.append(dif)
+            
+            current_accuracy = self.accuracy(desc_set, label_set)
+            
+            if current_accuracy > best_accuracy:
+                best_accuracy = current_accuracy
+                best_w = w_new.copy()
+                if verbose:
+                    print(f"Etape {i}: Nouvelle meilleure accuracy = {best_accuracy:.4f}")
+            
+            if dif < seuil:
+                break
+                
+        self.set_w(best_w)
+        return result_list
 
 
 class ClassifierMultiOAA(Classifier):
@@ -147,47 +199,62 @@ class ClassifierMultiOAA(Classifier):
         return self.classes[idx_max]
 
 
-class ClassifierPerceptronStable(ClassifierPerceptron):
-    def __init__(self, input_dimension, learning_rate=0.01, init=True, verbose=False):
-        super().__init__(input_dimension, learning_rate, init, verbose)
-        if verbose:
-            print(f"{super().__str__()} (stabilise)")
+class Kernel():
+    def __init__(self, dim_in, dim_out):
+        self.__input_dim = dim_in
+        self.__output_dim = dim_out
+        
+    def get_input_dim(self):
+        return self.__input_dim
 
-    def __str__(self) -> str:
-        return f"{super().__str__()} (stabilise)"
+    def get_output_dim(self):
+        return self.__output_dim
     
-    def train(self, desc_set, label_set, nb_max=100, seuil=0.001, stabilised=True, verbose=False):
-        result_list = list()
+    def transform(self, V):
+        raise NotImplementedError("Please Implement this method")
+
+
+class KernelBias(Kernel):
+    def __init__(self):
+        super().__init__(2, 3)
         
-        if not stabilised:
-            return super().train(desc_set, label_set, nb_max, seuil, verbose)
-            
-        best_w = self.get_w().copy()
-        best_accuracy = self.accuracy(desc_set, label_set)
+    def transform(self, V):
+        if V.ndim == 1:
+            W = np.array([V])
+            V_proj = np.append(W, np.ones((len(W), 1)), axis=1)
+            V_proj = V_proj[0]
+        else:
+            V_proj = np.append(V, np.ones((len(V), 1)), axis=1)
+        return V_proj
+
+
+class KernelPoly(Kernel):
+    def __init__(self):
+        super().__init__(2, 6)
         
-        for i in range(nb_max):
-            w_old = self.get_w().copy()
-            
-            self.train_step(desc_set, label_set)
-            
-            w_new = self.get_w().copy()
-            dif = np.linalg.norm(np.abs(w_new - w_old))
-            result_list.append(dif)
-            
-            current_accuracy = self.accuracy(desc_set, label_set)
-            
-            if current_accuracy > best_accuracy:
-                best_accuracy = current_accuracy
-                best_w = w_new.copy()
-                if verbose:
-                    print(f"Etape {i}: Nouvelle meilleure accuracy = {best_accuracy:.4f}")
-            
-            if dif < seuil:
-                break
-                
-        self.set_w(best_w)
+    def transform(self, V):
+        ones = np.ones((len(V), 1))
+        x1 = V[:, 0:1]
+        x2 = V[:, 1:2]
+        x1_x1 = x1 * x1
+        x2_x2 = x2 * x2
+        x1_x2 = x1 * x2
+        return np.hstack([ones, x1, x2, x1_x1, x2_x2, x1_x2])
+
+
+class KernelBiasGeneric(Kernel):
+    def __init__(self, dim_in):
+        super().__init__(dim_in, dim_in + 1)
         
-        return result_list
+    def transform(self, V):
+        if V.ndim == 1:
+            W = np.array([V])
+            V_proj = np.append(W, np.ones((len(W), 1)), axis=1)
+            V_proj = V_proj[0]
+        else:
+            V_proj = np.append(V, np.ones((len(V), 1)), axis=1)
+        return V_proj
+
 
 class ClassifierPerceptronKernel(ClassifierPerceptron):
     def __init__(self, input_dimension, learning_rate, noyau, init=True, verbose=False):
@@ -196,11 +263,13 @@ class ClassifierPerceptronKernel(ClassifierPerceptron):
         if verbose:
             print(f"{super().__str__()}: initialisation avec kernalisation")
         
-    def train_step(self, desc_set, label_set, stabilised=False):
+    def train_step(self, desc_set, label_set):
         desc_set_transformed = self.noyau.transform(desc_set)
         super().train_step(desc_set_transformed, label_set)     
      
     def score(self, x):
-        if len(x) == self.noyau.get_input_dim():
+        if x.ndim == 1:
             x = self.noyau.transform(x.reshape(1, -1))[0]
+        else:
+            x = self.noyau.transform(x)
         return super().score(x)
