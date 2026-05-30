@@ -88,6 +88,11 @@ class ClassifierPerceptron(Classifier):
     
     def predict(self, x):
         return 1 if (self.score(x)) >= 0 else -1
+    def get_w(self):
+        return self._ClassifierPerceptron__w
+
+    def set_w(self, new_w):
+        self._ClassifierPerceptron__w = new_w
 
 
 class ClassifierKNN(Classifier):
@@ -165,7 +170,7 @@ class ClassifierPerceptronStable(ClassifierPerceptron):
             
             self.train_step(desc_set, label_set)
             
-            w_new = self.get_w()
+            w_new = self.get_w().copy()
             dif = np.linalg.norm(np.abs(w_new - w_old))
             result_list.append(dif)
             
@@ -183,7 +188,6 @@ class ClassifierPerceptronStable(ClassifierPerceptron):
         self.set_w(best_w)
         
         return result_list
-
 
 class ClassifierPerceptronKernel(ClassifierPerceptron):
     def __init__(self, input_dimension, learning_rate, noyau, init=True, verbose=False):

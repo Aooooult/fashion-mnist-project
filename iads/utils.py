@@ -16,39 +16,42 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # ------------------------ 
-
-def plot2DTrainTestSet(d_train,l_train, d_test,l_test, nom_dataset= "Dataset", avec_grid=True):    
-    """ array * array array * array * str * bool-> affichage
-        nom_dataset (str): nom du dataset pour la légende
-        avec_grid (bool) : True si on veut afficher la grille, False sinon
-        la fonction doit utiliser les couleurs suivantes:
-        - pour les données d'apprentissage : la couleur 'red' pour la classe -1 et 'blue' pour la +1
-        - pour les données de test : la couleur 'jaune' pour la classe -1 et 'verte' pour la +1
+def echantillonnage_homogene(X, Y, proportion):
+    """ array * array * float -> tuple[array, array]
+        Arguments:
+            - X (array): matrice des descriptions
+            - Y (array): vecteur des labels correspondants
+            - proportion (float): la fraction de données à extraire (entre 0 et 1)
+        Retour: tuple[array, array]
+            - un tuple (X_sub, Y_sub) contenant un sous-ensemble des données
+              préservant les proportions de chaque classe.
     """
-
-
-    desc_train = np.asarray(d_train)
-    desc_test = np.asarray(d_test)
-    labels_train = np.asarray(l_train)
-    labels_test = np.asarray(l_test)
+    # On récupère les classes présentes dans Y
+    classes = np.unique(Y)
     
-    idx_neg_test = (l_test == -1)
-    idx_pos_test = (l_test == 1)
-    desc_neg_test = d_test[idx_neg_test]
-    desc_pos_test = d_test[idx_pos_test]
-
-    idx_neg_train = (l_train == -1)
-    idx_pos_train = (l_train == 1)
-    desc_neg_train = d_train[idx_neg_train]
-    desc_pos_train = d_train[idx_pos_train]
-    plt.scatter(desc_neg_test[:,0], desc_neg_test[:,1], marker='o', color="yellow", label="classe -1 test")
-    plt.scatter(desc_pos_test[:,0], desc_pos_test[:,1], marker='x', color="green", label="classe +1 test") 
-    plt.scatter(desc_neg_train[:,0], desc_neg_train[:,1], marker='o', color="red", label="classe -1")
-    plt.scatter(desc_pos_train[:,0], desc_pos_train[:,1], marker='x', color="blue", label="classe +1") 
-    plt.title(nom_dataset)
-    plt.xlabel("x1")
-    plt.ylabel("x2")
-    plt.legend()
-    plt.grid(avec_grid)
-    plt.show()
+    indices_selectionnes = []
+    
+    for c in classes:
+        # 1. On récupère tous les indices de la classe c
+        indices_classe = np.where(Y == c)[0]
+        
+        # 2. On calcule combien d'éléments on doit prendre pour cette classe
+        # (proportion * nombre total d'éléments de la classe)
+        n_a_prendre = int(len(indices_classe) * proportion)
+        
+        # 3. On mélange les indices de cette classe pour avoir un tirage aléatoire
+        indices_melanges = np.random.permutation(indices_classe)
+        
+        # 4. On sélectionne les n premiers indices mélangés
+        indices_selectionnes.extend(indices_melanges[:n_a_prendre])
+        
+    # On convertit en tableau numpy et on remélange le tout pour ne pas avoir les classes groupées
+    indices_selectionnes = np.array(indices_selectionnes)
+    np.random.shuffle(indices_selectionnes)
+    
+    # Récupération des données correspondantes
+    X_sub = X[indices_selectionnes]
+    Y_sub = Y[indices_selectionnes]
+    
+    return X_sub, Y_sub
 
