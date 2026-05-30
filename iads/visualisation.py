@@ -75,3 +75,58 @@ def plot2DTrainTestSet(d_train,l_train, d_test,l_test, nom_dataset= "Dataset", a
     plt.legend()
     plt.grid(avec_grid)
     plt.show()
+
+def plot_comparaison_classifiers(models_names, means, stds, title="Comparaison des Classifiers"):
+    """ list[str] * list[float] * list[float] * str -> None
+        Affiche un diagramme en barres comparatif avec les écarts-types (les "moustaches").
+    """
+    
+    plt.figure(figsize=(9, 6))
+    
+    bars = plt.bar(models_names, means, yerr=stds, 
+                   color=['darkorange', 'cornflowerblue', 'royalblue', 'seagreen', 'crimson'][:len(models_names)], 
+                   capsize=8, alpha=0.85, edgecolor='black', width=0.4,
+                   error_kw={'ecolor': 'crimson', 'elinewidth': 2, 'capthick': 2})
+    
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.01, f'{yval:.4f}', 
+                 ha='center', va='bottom', fontweight='bold', fontsize=10)
+                 
+    plt.title(title, fontsize=13, fontweight='bold', pad=15)
+    plt.ylabel("Accuracy Moyenne (Validation Croisée)", fontsize=11)
+    plt.ylim(0.5, 1.0)
+    plt.grid(True, axis='y', linestyle='--', alpha=0.5)
+    
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    
+    plt.tight_layout()
+    plt.show()
+
+def visualiser_frontiere_2d(X, Y, classifier, title="Frontière de Décision", step=50):
+    """ array * array * Classifier * str * int -> NoneType
+        Prend un dataset 2D, entraîne/utilise le classifieur et affiche 
+        la frontière de décision superposée avec les points de données.
+    """
+    mmax = X.max(0)
+    mmin = X.min(0)
+    
+    x1_min, x1_max = mmin[0] - 0.1, mmax[0] + 0.1
+    x2_min, x2_max = mmin[1] - 0.1, mmax[1] + 0.1
+    
+    x1grid, x2grid = np.meshgrid(np.linspace(x1_min, x1_max, step), 
+                                 np.linspace(x2_min, x2_max, step))
+    grid = np.hstack((x1grid.reshape(x1grid.size, 1), x2grid.reshape(x2grid.size, 1)))
+    
+    res = np.array([classifier.predict(grid[i, :]) for i in range(len(grid))])
+    res = res.reshape(x1grid.shape)
+    
+    plt.contourf(x1grid, x2grid, res, colors=["darksalmon", "skyblue"], levels=[-1000, 0, 1000], alpha=0.6)
+    
+    plt.scatter(X[Y == -1][:, 0], X[Y == -1][:, 1], color='crimson', label='T-shirt (-1)', alpha=0.7, edgecolors='k')
+    plt.scatter(X[Y == 1][:, 0], X[Y == 1][:, 1], color='darkblue', label='Chemise (1)', alpha=0.7, edgecolors='k')
+    
+    plt.title(title, fontsize=11, fontweight='bold')
+    plt.grid(True, linestyle='--', alpha=0.3)
+    plt.legend(loc='upper right')
