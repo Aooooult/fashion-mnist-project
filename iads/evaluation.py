@@ -154,7 +154,7 @@ def matrice_de_confusion(C, DS, nb_iter, stratified=True, verbose=False):
                     xticklabels=labels, yticklabels=labels)
         plt.xlabel('Prédictions')
         plt.ylabel('Vrai labels')
-        plt.title('Matrice de Confusion')
+        plt.title(f'Matrice de Confusion {C_copy}')
         plt.show()
 
 def CHA_initialise(DF):

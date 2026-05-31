@@ -250,6 +250,7 @@ class ClassifierPerceptronKernel(ClassifierPerceptron):
         self.noyau = noyau
         if verbose:
             print(f"{super().__str__()}: initialisation avec kernalisation")
+    
         
     def train_step(self, desc_set, label_set):
         desc_set_transformed = self.noyau.transform(desc_set)
@@ -261,3 +262,6 @@ class ClassifierPerceptronKernel(ClassifierPerceptron):
         else:
             x = self.noyau.transform(x)
         return super().score(x)
+    
+    def __str__(self) -> str:
+        return f'PerceptronKernel(Noyau: {self.noyau.__class__.__name__})'
