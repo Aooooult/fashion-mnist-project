@@ -2,6 +2,7 @@ import numpy as np
 import copy
 import graphviz as gv
 from iads import Classifiers as cl
+import random
 
 
 def classe_majoritaire(Y):
@@ -416,3 +417,180 @@ class ClassifierArbreGeneral(cl.Classifier):
 
     def affiche(self, GTree):
         self.__racine.to_graph(GTree)
+
+def tirage(VX, m, avecRemise=False):
+    if not avecRemise: 
+        return random.sample(VX, m) 
+    else: 
+        return np.random.choice(VX, size=m, replace=True)
+
+
+def echantillonLS(LS, m, avecRemise):
+    (desc, labels) = LS
+    v_indices = np.arange(desc.shape[0])
+    tirage_index = tirage(v_indices, m, avecRemise)
+    return (desc[tirage_index], labels[tirage_index])
+
+
+class ClassifierBaggingTree(cl.Classifier):
+    def __init__(self, input_dimension, nbArbres, pourc, epsilon, avecRemise):
+        super().__init__(input_dimension)  
+        self.__nbArbres = nbArbres
+        self.__pourc = pourc
+        self.__avecRemise = avecRemise
+        self.__epsilon = epsilon 
+        self.__foret = []    
+        self.__m = None      
+             
+    def __str__(self):
+        return super().__str__() + ' - ClassifierBaggingTree eps=' + str(self.__epsilon) + ' nb_arbres=' + str(self.__nbArbres)
+
+    def train(self, desc_set, label_set=None, verbose=False):
+        if label_set is None:
+            (desc, labels) = desc_set
+        else:
+            desc, labels = desc_set, label_set
+
+        n_lig, n_col = desc.shape
+
+        self.__m = int(self.__pourc * n_lig)
+        if self.__m < 1:
+            self.__m = 1  
+
+        self.__foret = []
+
+        for i in range(self.__nbArbres): 
+            (d_desc, d_label) = echantillonLS((desc, labels), self.__m, self.__avecRemise)
+            arbre = construit_AD_num(d_desc, d_label, self.__epsilon)
+            self.__foret.append(arbre)
+        
+    def add_tree(self, LS):
+        (desc, labels) = LS
+        n_lig, n_col = desc.shape
+        
+        if self.__m is None:
+            self.__m = int(self.__pourc * n_lig)
+            
+        (d_desc, d_label) = echantillonLS(LS, self.__m, self.__avecRemise)
+        arbre = construit_AD_num(d_desc, d_label, self.__epsilon)
+        self.__foret.append(arbre)
+        self.__nbArbres += 1 
+        
+    def score(self, x):
+        if len(self.__foret) == 0:
+            return 0.0
+            
+        total_votes = 0
+        for arbre in self.__foret:
+            vote = arbre.classifie(x)
+            if vote is not None:
+                total_votes += vote
+                
+        return total_votes
+            
+    def predict(self, x):
+        total_score = self.score(x)
+        if total_score >= 0:
+            return 1
+        else:
+            return -1
+
+class ClassifierBaggingTreeOOB(cl.Classifier):
+    def __init__(self, input_dimension, nbArbres, pourc, epsilon, avecRemise):
+        super().__init__(input_dimension)  
+        self._nbArbres = nbArbres
+        self._pourc = pourc
+        self._avecRemise = avecRemise
+        self._epsilon = epsilon 
+        self._foret = []    
+        self._m = None
+        self._oob_indices = [] 
+
+    def __str__(self):
+        return super().__str__() + ' - ClassifierBaggingTreeOOB eps=' + str(self._epsilon) + ' nb_arbres=' + str(self._nbArbres)
+
+    def train(self, desc_set, label_set=None, verbose=False):
+        if label_set is None:
+            (desc, labels) = desc_set
+        else:
+            desc, labels = desc_set, label_set
+
+        n_lig, n_col = desc.shape
+
+        self._m = int(self._pourc * n_lig)
+        if self._m < 1:
+            self._m = 1  
+
+        self._foret = []
+        self._oob_indices = []
+        all_indices = np.arange(n_lig)
+
+        for i in range(self._nbArbres):
+            idx_bootstrap = tirage(list(all_indices), self._m, self._avecRemise)
+            idx_bootstrap_set = set(idx_bootstrap)
+
+            idx_oob = np.array([j for j in all_indices if j not in idx_bootstrap_set])
+
+            d_desc  = desc[idx_bootstrap]
+            d_label = labels[idx_bootstrap]
+
+            arbre = construit_AD_num(d_desc, d_label, self._epsilon)
+            self._foret.append(arbre)
+            self._oob_indices.append(idx_oob)
+
+    def oob_score(self, LS):
+        """ Calcule le score OOB — estimation de la performance sans jeu de test """
+        (desc, labels) = LS
+        n_lig = desc.shape[0]
+        
+        votes      = np.zeros(n_lig)
+        nb_votes   = np.zeros(n_lig) 
+        
+        for arbre, idx_oob in zip(self._foret, self._oob_indices):
+            if len(idx_oob) == 0:
+                continue
+            for i in idx_oob:
+                vote = arbre.classifie(desc[i])
+                if vote is not None:
+                    votes[i]    += vote
+                    nb_votes[i] += 1
+        
+        mask = nb_votes > 0
+        # ЗАЩИТА: если ни один объект не получил OOB голосов, возвращаем 0
+        if not np.any(mask):
+            return 0.0
+            
+        predictions = np.where(votes[mask] >= 0, 1, -1)
+        return np.mean(predictions == labels[mask])
+
+    def add_tree(self, LS):
+        (desc, labels) = LS
+        n_lig, n_col = desc.shape
+        
+        if self._m is None:
+            self._m = int(self._pourc * n_lig)
+            
+        all_indices   = np.arange(n_lig)
+        idx_bootstrap = tirage(list(all_indices), self._m, self._avecRemise)
+        idx_oob       = np.array([i for i in all_indices if i not in set(idx_bootstrap)])
+        
+        d_desc  = desc[idx_bootstrap]
+        d_label = labels[idx_bootstrap]
+        
+        arbre = construit_AD_num(d_desc, d_label, self._epsilon)
+        self._foret.append(arbre)
+        self._oob_indices.append(idx_oob)
+        self._nbArbres += 1 
+        
+    def score(self, x):
+        if len(self._foret) == 0:
+            return 0.0
+        total_votes = 0
+        for arbre in self._foret:
+            vote = arbre.classifie(x)
+            if vote is not None:
+                total_votes += vote
+        return total_votes
+            
+    def predict(self, x):
+        return 1 if self.score(x) >= 0 else -1

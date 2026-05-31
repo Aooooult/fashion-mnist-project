@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+import matplotlib.cm as cm
 
 FASHION_LABELS = {
     0: "T-shirt/top",
@@ -131,8 +132,6 @@ def visualiser_frontiere_2d(X, Y, classifier, title="Frontière de Décision", s
     plt.grid(True, linestyle='--', alpha=0.3)
     plt.legend(loc='upper right')
 
-    import matplotlib.cm as cm
-
 def affiche_resultat(Base,Centres,Affect):
     """ Arguments :
             - ensemble d'exemples
@@ -175,3 +174,28 @@ def affiche_resultat(Base,Centres,Affect):
     plt.grid(True)
     plt.show()
         
+def visualiser_frontiere_multiclasse(X, Y, classifier, title="Frontière de Décision Multiclasse", step=100):
+    """ array * array * ClassifierMultiOAA * str * int -> NoneType
+    """
+    mmax = X.max(0)
+    mmin = X.min(0)
+    
+    x1_min, x1_max = mmin[0] - 0.5, mmax[0] + 0.5
+    x2_min, x2_max = mmin[1] - 0.5, mmax[1] + 0.5
+    
+    x1grid, x2grid = np.meshgrid(np.linspace(x1_min, x1_max, step), 
+                                 np.linspace(x2_min, x2_max, step))
+    grid = np.hstack((x1grid.reshape(x1grid.size, 1), x2grid.reshape(x2grid.size, 1)))
+    
+    res = np.array([classifier.predict(grid[i, :]) for i in range(len(grid))])
+    res = res.reshape(x1grid.shape)
+    
+    plt.contourf(x1grid, x2grid, res, cmap='Accent', alpha=0.5)
+    
+    unique_labels = np.unique(Y)
+    scatter = plt.scatter(X[:, 0], X[:, 1], c=Y, cmap='Accent', edgecolors='k', alpha=0.8)
+    
+    plt.legend(*scatter.legend_elements(), loc="upper right", title="Classes")
+    
+    plt.title(title, fontsize=12, fontweight='bold')
+    plt.grid(True, linestyle='--', alpha=0.3)
