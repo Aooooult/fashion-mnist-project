@@ -130,3 +130,48 @@ def visualiser_frontiere_2d(X, Y, classifier, title="Frontière de Décision", s
     plt.title(title, fontsize=11, fontweight='bold')
     plt.grid(True, linestyle='--', alpha=0.3)
     plt.legend(loc='upper right')
+
+    import matplotlib.cm as cm
+
+def affiche_resultat(Base,Centres,Affect):
+    """ Arguments :
+            - ensemble d'exemples
+            - ensemble de centroides
+            - matrice d'affectation                
+    """
+
+    Base = np.asarray(Base)
+    Centres = np.asarray(Centres)
+
+    couleurs = cm.tab20(np.linspace(0, 1, len(Centres)))
+
+    plt.figure(figsize=(6, 5))
+
+    # --- affichage des points ---
+    for cluster_id, indices in Affect.items():
+        points = Base[indices]
+
+        plt.scatter(
+            points[:, 0],
+            points[:, 1],
+            color=couleurs[cluster_id],
+            label=f"Cluster {cluster_id}",
+            s=30
+        )
+
+    # --- affichage des centres ---
+    plt.scatter(
+        Centres[:, 0],
+        Centres[:, 1],
+        color="red",
+        marker="x",
+        s=200,
+        linewidths=3,
+        label="Centres"
+    )
+
+    plt.title("Résultat K-moyennes")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+        

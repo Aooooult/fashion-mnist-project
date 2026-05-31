@@ -16,6 +16,7 @@ import copy
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
+import scipy.cluster.hierarchy
 
 # ------------------------ 
 
@@ -155,3 +156,111 @@ def matrice_de_confusion(C, DS, nb_iter, stratified=True, verbose=False):
         plt.ylabel('Vrai labels')
         plt.title('Matrice de Confusion')
         plt.show()
+
+def CHA_initialise(DF):
+    """ Initialise la partition de départ pour CHA
+        Argument:
+            - DF (DataFrame): base d'apprentissage
+        Retour:
+            - dict: clé = numéro de cluster (entier), valeur = liste des indices d'exemples
+    """
+    partition = {}
+    for i, idx in enumerate(DF.index):
+        partition[i] = [idx]
+    return partition
+
+def CHA_fusionne(df, p0, linkage_instance, verbose=False):
+    """ Fusionne les 2 groupes les plus proches selon le linkage
+        Arguments:
+            - df: DataFrame de la base d'apprentissage
+            - p0: partition
+            - linkage_instance: instance de la classe Linkage à utiliser pour calculer les distances entre groupes
+            - verbose: affichage du debuggage
+        Retour:
+            - (p1, id0, id1, dist): p1: nouvelle partition après fusion, id0 et id1: indices des groupes fusionnés, dist: distance entre les groupes fusionnés
+    """
+
+    ids = sorted(p0.keys())
+    best_id0, best_id1 = None, None
+    best_dist = np.inf
+
+    # OPTIMISATION MAJEURE : On pré-extrait les groupes de Pandas vers Numpy 
+    # une seule fois au lieu de le faire dans la double boucle pour chaque paire.
+    # Cela évite des millions d'appels très lents à df.loc.
+    groupes = {id_c: df.loc[p0[id_c]].values for id_c in ids}
+
+    # Recherche des 2 clusters les plus proches
+    for i in range(len(ids)):
+        id0 = ids[i]
+        G0 = groupes[id0]
+        for j in range(i + 1, len(ids)):
+            id1 = ids[j]
+            G1 = groupes[id1]
+            dist = linkage_instance.calcule(G0, G1, verbose=False)
+
+            if dist < best_dist:
+                best_dist = dist
+                best_id0, best_id1 = id0, id1
+
+    # Construction de la nouvelle partition
+    p1 = {k: list(v) for k, v in p0.items() if k not in (best_id0, best_id1)}
+    new_id = max(p0.keys()) + 1
+    p1[new_id] = p0[best_id0] + p0[best_id1]
+
+    if verbose:
+        print(f"Fusion de {best_id0} et {best_id1} --> distance = {best_dist:1.4f}")
+
+    return p1, best_id0, best_id1, best_dist
+
+def CHA_algorithme(df, linkage_instance, verbose=False):
+    """ Algorithme de CHA
+        Arguments:
+            - df: DataFrame de la base d'apprentissage
+            - linkage_instance: instance de la classe Linkage à utiliser pour calculer les distances entre groupes
+            - verbose: affichage du debuggage
+        Retour:
+            - liste resultat: [[id0, id1, dist, taille], ...]
+    """
+    p = CHA_initialise(df)
+    resultat = []
+    
+    nb_initial = len(p)
+    if verbose:
+        print(f"Début de CHA_algorithme sur {nb_initial} exemples.")
+
+    while len(p) > 1:
+        if verbose:
+            print(f"[{nb_initial - len(p) + 1}/{nb_initial - 1}] Clusters restants : {len(p)}...", end=' ')
+
+        # La taille du cluster fusionne se calcule sur la partition avant fusion
+        p1, id0, id1, dist = CHA_fusionne(df, p, linkage_instance, verbose)
+        taille = len(p[id0]) + len(p[id1])
+        resultat.append([id0, id1, float(dist), taille])
+        p = p1
+
+    if verbose:
+        print("Algorithme CHA terminé.")
+
+    return resultat
+
+def CHA_dendrogramme(results, linkage_info):
+    """ Affiche le dendrogramme à partir des résultats de CHA
+        Arguments:
+            - results: liste des fusions effectuées par CHA (id0, id1, dist, taille)
+            - linkage_info: str, informations sur le linkage utilisé (pour le titre du graphique)
+    """
+
+    # Paramètre de la fenêtre d'affichage:
+    plt.figure(figsize=(30, 15)) # taille : largeur x hauteur
+    plt.title(f'Dendrogramme - {linkage_info}', fontsize=25)
+    plt.xlabel("Indice d'exemple", fontsize=25)
+    plt.ylabel('Distance', fontsize=25)
+
+    # Construction du dendrogramme pour notre clustering :
+    scipy.cluster.hierarchy.dendrogram(
+        results,
+        leaf_font_size=24.,  # taille des caractères de l'axe des X
+    )
+
+    # Affichage du résultat obtenu:
+    plt.show()
