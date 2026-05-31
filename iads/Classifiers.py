@@ -214,20 +214,6 @@ class Kernel():
         raise NotImplementedError("Please Implement this method")
 
 
-class KernelBias(Kernel):
-    def __init__(self):
-        super().__init__(2, 3)
-        
-    def transform(self, V):
-        if V.ndim == 1:
-            W = np.array([V])
-            V_proj = np.append(W, np.ones((len(W), 1)), axis=1)
-            V_proj = V_proj[0]
-        else:
-            V_proj = np.append(V, np.ones((len(V), 1)), axis=1)
-        return V_proj
-
-
 class KernelPoly(Kernel):
     def __init__(self):
         super().__init__(2, 6)
@@ -241,21 +227,23 @@ class KernelPoly(Kernel):
         x1_x2 = x1 * x2
         return np.hstack([ones, x1, x2, x1_x1, x2_x2, x1_x2])
 
+class KernelRBF(Kernel):
+    """
+    Approximation RBF via Random Fourier Features (Rahimi & Recht).
+    Fonctionne avec n'importe quelle dimension d'entrée.
+    """
+    def __init__(self, dim_in, dim_out, gamma=0.01, seed=42):
+        super().__init__(dim_in, dim_out)
+        rng = np.random.default_rng(seed)
+        self.W = rng.normal(0, np.sqrt(2 * gamma), (dim_out, dim_in))
+        self.b = rng.uniform(0, 2 * np.pi, dim_out)
 
-class KernelBiasGeneric(Kernel):
-    def __init__(self, dim_in):
-        super().__init__(dim_in, dim_in + 1)
-        
     def transform(self, V):
         if V.ndim == 1:
-            W = np.array([V])
-            V_proj = np.append(W, np.ones((len(W), 1)), axis=1)
-            V_proj = V_proj[0]
-        else:
-            V_proj = np.append(V, np.ones((len(V), 1)), axis=1)
-        return V_proj
-
-
+            V = V.reshape(1, -1)
+            return np.sqrt(2 / self.get_output_dim()) * np.cos(V @ self.W.T + self.b)[0]
+        return np.sqrt(2 / self.get_output_dim()) * np.cos(V @ self.W.T + self.b)
+    
 class ClassifierPerceptronKernel(ClassifierPerceptron):
     def __init__(self, input_dimension, learning_rate, noyau, init=True, verbose=False):
         super().__init__(noyau.get_output_dim(), learning_rate, init)
